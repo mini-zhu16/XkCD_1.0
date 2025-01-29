@@ -4,6 +4,7 @@ import pandas as pd
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
+# Get the current/latest comic number from the XKCD API
 def get_current_comic_number():
     url = "https://xkcd.com/info.0.json"
     response = requests.get(url)
@@ -15,11 +16,12 @@ def get_current_comic_number():
         logging.error("Failed to retrieve data for current comic. Status code: %d", response.status_code)
         return None
 
-def get_comic_data():
+# get comic data from a comic number
+def get_comic_data(start_num = 0):
     all_comic_data = []
     current_comic_number = get_current_comic_number()
     if current_comic_number is not None:
-        for num in range(1, current_comic_number+1):
+        for num in range(start_num + 1, current_comic_number + 1):
             url = f"https://xkcd.com/{num}/info.0.json"
             response = requests.get(url)
             try:
