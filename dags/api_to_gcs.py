@@ -75,9 +75,9 @@ def api_to_GCS():
             return 'upload_last_fetched_comic_num'
 
     @task
-    def fetch_comic_data():
+    def fetch_comic_data(**context):
         # fetch the available new comic data
-        task_instance = TaskInstance(task=get_last_fetched_comic_num)
+        task_instance = context['task_instance']
         last_fetched_comic_number = task_instance.xcom_pull(task_ids='get_last_fetched_comic_num')
         comic_df = get_comic_data(start_num=last_fetched_comic_number)
         return comic_df
@@ -107,10 +107,10 @@ def api_to_GCS():
         logging.info(f"Uploaded comic data to {data_file_path}")
 
     @task
-    def upload_last_fetched_comic_num():
+    def upload_last_fetched_comic_num(**context):
         # save the last fetched comic number to a txt file
         # Retrieve the latest comic number from XCom
-        task_instance = TaskInstance(task=get_latest_comic_number)
+        task_instance = context['task_instance']
         latest_comic_number = task_instance.xcom_pull(task_ids='get_latest_comic_number')
 
         last_fetched_comic_content = f"Last Fetched Comic ID: {latest_comic_number}"
@@ -141,7 +141,7 @@ def api_to_GCS():
     upload_last_fetched = upload_last_fetched_comic_num()
 
     # Define the branching logic
-    next_task >> fetch_comic >> upload_comic
+    next_task >> fetch_comic >> upload_comic >> upload_last_fetched
     next_task >> upload_last_fetched
 
 api_to_GCS()
