@@ -1,10 +1,11 @@
-from airflow import DAG
-from airflow.decorators import dag, task
-from airflow.providers.google.cloud.operators.gcs import GCSCreateBucketOperator
-from airflow.providers.google.cloud.hooks.gcs import GCSHook
 import io
 import os
 import logging
+from airflow import DAG
+from airflow.decorators import dag, task
+from airflow.models.baseoperator import chain
+from airflow.providers.google.cloud.operators.gcs import GCSCreateBucketOperator
+from airflow.providers.google.cloud.hooks.gcs import GCSHook
 from datetime import datetime, timedelta
 from include.api_functions import get_comic_data
 
@@ -46,6 +47,8 @@ def api_to_GCS():
         comic_df = get_comic_data()
         return comic_df
     
+    fetch_comic_data_obj = fetch_comic_data()
+    
     @task
     # store the fetched data into GCS
     def upload_to_gcs(comic_df):
@@ -66,11 +69,10 @@ def api_to_GCS():
             data=csv_buffer
         )
 
-        logging.info(f"Uploaded comic data to {gcs_file_path}")
+        logging.info(f"Uploaded comic data to {file_path}")
 
+    upload_to_gcs_obj = upload_to_gcs(fetch_comic_data_obj)
 
+    create_bucket_task >> fetch_comic_data_obj >> upload_to_gcs_obj
 
-
-            
-
-
+api_to_GCS()
