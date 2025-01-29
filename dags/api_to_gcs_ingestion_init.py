@@ -23,7 +23,7 @@ default_args = {
 
 @dag(
     default_args=default_args,
-    dag_id = "ingest_api_to_gcs",
+    dag_id = "ingest_api_to_gcs_initial_load",
     schedule = "@once",
     catchup = False
 )
