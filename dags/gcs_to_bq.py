@@ -1,7 +1,7 @@
 import os
 from airflow.decorators import dag, task
 from airflow.providers.google.cloud.operators.gcs import GCSListObjectsOperator
-from airflow.providers.google.cloud.transfers.gcs_to_bigquery import GCSToBigQueryOperator
+from airflow.operators.trigger_dagrun import TriggerDagRunOperator
 from airflow.providers.google.cloud.hooks.gcs import GCSHook
 from airflow.providers.google.cloud.hooks.bigquery import BigQueryHook
 from google.cloud import bigquery
@@ -148,6 +148,14 @@ def gcs_to_bigquery_dag():
         else:
             return "No new files to update."
 
+    # Trigger the onboarding DAG to load data into BigQuery
+    trigger_second_dag_task = TriggerDagRunOperator(
+    task_id='trigger_bq_transformation_dag',
+    trigger_dag_id='bigquery_transformations',  # Second DAG ID
+    conf={}, 
+    wait_for_completion=True,  # Optionally, wait for the triggered DAG to complete
+    )
+
     # Task dependencies
     processed_files = get_processed_files()
     all_files = list_gcs_files
@@ -155,7 +163,7 @@ def gcs_to_bigquery_dag():
     load_result = load_gcs_to_bq(new_files)
     update_processed_files = update_processed_files(new_files)
 
-    processed_files >> all_files >> new_files >> load_result >> update_processed_files
+    processed_files >> all_files >> new_files >> load_result >> update_processed_files >> trigger_second_dag_task
 
 
 
