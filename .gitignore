@@ -10,3 +10,4 @@ webserver_config.py
 airflow.cfg
 airflow.db
 include/keys/xkcd-449310-40431e8f4281.json
+include/keys/*.json
