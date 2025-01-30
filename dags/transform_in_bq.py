@@ -1,22 +1,39 @@
-from airflow import DAG
+from cosmos import DbtDag, ProjectConfig, ProfileConfig, ExecutionConfig
+from cosmos.profiles import GoogleCloudServiceAccountFileProfileMapping
 from airflow.utils.dates import days_ago
-from cosmos import DbtDag
 
-# Define the path to your dbt project
-DBT_PROJECT_PATH = "dags/XkCD-transform/xkcd_dbt"
+import os
+from datetime import datetime
 
-# Create the DAG using Cosmos
-with DAG(
-    "dbt_pipeline",
+airflow_home = os.environ["AIRFLOW_HOME"]
+_PROJECT_ID = os.getenv("PROJECT_ID", "xkcd-449310")
+_BQ_DATASET_NAME = os.getenv("BQ_DATASET_NAME", "xkcd_dataset")
+
+# Define the profile configuration for BigQuery
+profile_config = ProfileConfig(
+    profile_name="xkcd_dbt",  # Name of the dbt profile
+    target_name="dev",       # Target environment (e.g., dev, prod)
+    profile_mapping=GoogleCloudServiceAccountFileProfileMapping(
+        conn_id="google_cloud", 
+        profile_args={
+            "project": _PROJECT_ID,  
+            "dataset": _BQ_DATASET_NAME, 
+        },
+    ),
+)
+
+my_cosmos_dag = DbtDag(
+    project_config=ProjectConfig(
+        f"{airflow_home}/dags/xkcd_dbt",
+    ),
+    profile_config=profile_config,
+    execution_config=ExecutionConfig(
+        dbt_executable_path=f"{airflow_home}/dbt_venv/bin/dbt",
+    ),
+    # normal dag parameters
+    schedule_interval="@daily",
     start_date=days_ago(1),
-    schedule_interval="@daily",  # Adjust as needed
     catchup=False,
-) as dag:
-    
-    dbt_task = DbtDag(
-        dbt_project_path=DBT_PROJECT_PATH,
-        profile_name="xkcd_dbt",  # Matches your dbt profiles.yml entry
-        conn_id="google_cloud",  # Airflow connection ID for BigQuery
-    )
-
-    dbt_task
+    dag_id="bigquery_transformations",
+    default_args={"retries": 2},
+)
