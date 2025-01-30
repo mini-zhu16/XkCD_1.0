@@ -27,7 +27,23 @@ def get_comic_data(start_num = 0):
             try:
                 response.raise_for_status()
                 comic_data = response.json()
-                all_comic_data.append(comic_data)
+
+                # only extract certian fields
+                filtered_data = {
+                    "num": comic_data.get("num"),
+                    "title": comic_data.get("title"),
+                    "safe_title": comic_data.get("safe_title"),
+                    "alt": comic_data.get("alt"),
+                    "img": comic_data.get("img"),
+                    "year": comic_data.get("year"),
+                    "month": comic_data.get("month"),
+                    "day": comic_data.get("day"),
+                    "news": comic_data.get("news", None),  # Optional field
+                    "link": comic_data.get("link", None),  # Optional field
+                    "transcript": comic_data.get("transcript", None)  # Optional field
+                }
+                
+                all_comic_data.append(filtered_data)
                 logging.info(f"Successfully retrieved data for comic #{num}")
             except requests.exceptions.RequestException as e:
                 logging.warning(f"Failed to retrieve data for comic #{num}: {e}")
