@@ -3,6 +3,8 @@ from airflow.decorators import dag, task
 from airflow.providers.google.cloud.operators.gcs import GCSListObjectsOperator
 from airflow.providers.google.cloud.transfers.gcs_to_bigquery import GCSToBigQueryOperator
 from airflow.providers.google.cloud.hooks.gcs import GCSHook
+from airflow.providers.google.cloud.hooks.bigquery import BigQueryHook
+from google.cloud import bigquery
 from airflow.utils.dates import days_ago
 from datetime import timedelta
 
@@ -26,7 +28,7 @@ default_args = {
 @dag(
     dag_id="gcs_to_bigquery_ingestion",
     default_args=default_args,
-    schedule_interval="@daily",  # Run daily
+    schedule_interval="@once",  # Run daily
     tags=["gcs", "bigquery"],
 )
 def gcs_to_bigquery_dag():
@@ -62,19 +64,58 @@ def gcs_to_bigquery_dag():
         all_files = ti.xcom_pull(task_ids="list_gcs_files")
         return [file for file in all_files if file.endswith(".csv") and file not in processed_files]
 
+    @task
+    def load_gcs_to_bq(new_files):
+        """Load CSV files from GCS into BigQuery using the BigQuery Python Client."""
+        if not new_files:  # Skip if there are no new files
+            return "No new files to load."
 
-    # Use GCSToBigQueryOperator to load files into BigQuery
-    load_gcs_to_bq = GCSToBigQueryOperator(
-        task_id="load_gcs_to_bq",
-        bucket=_GCS_BUCKET_NAME,
-        source_objects="xkcd/comic_data_20250129_1609.csv",
-        destination_project_dataset_table=f"{_PROJECT_ID}.{_BQ_DATASET_NAME}.{_BQ_TABLE_NAME}",
-        source_format="CSV",
-        create_disposition="CREATE_IF_NEEDED",
-        write_disposition="WRITE_APPEND",
-        autodetect=True,
-        gcp_conn_id=_GCP_CONN_ID,
-    )
+        # Initialize BigQuery client
+        bq_hook = BigQueryHook(gcp_conn_id=_GCP_CONN_ID)
+        client = bq_hook.get_client()
+
+        # Define the BigQuery table reference
+        table_ref = f"{_PROJECT_ID}.{_BQ_DATASET_NAME}.{_BQ_TABLE_NAME}"
+
+        # Define the table schema
+        schema = [
+            bigquery.SchemaField("num", "INTEGER", mode="REQUIRED"),
+            bigquery.SchemaField("title", "STRING", mode="NULLABLE"),
+            bigquery.SchemaField("safe_title", "STRING", mode="NULLABLE"),
+            bigquery.SchemaField("alt", "STRING", mode="NULLABLE"),
+            bigquery.SchemaField("img", "STRING", mode="NULLABLE"),
+            bigquery.SchemaField("year", "INTEGER", mode="NULLABLE"),
+            bigquery.SchemaField("month", "INTEGER", mode="NULLABLE"),
+            bigquery.SchemaField("day", "INTEGER", mode="NULLABLE"),
+            bigquery.SchemaField("news", "STRING", mode="NULLABLE"),
+            bigquery.SchemaField("link", "STRING", mode="NULLABLE"),
+            bigquery.SchemaField("transcript", "STRING", mode="NULLABLE"),
+        ]
+        # Configure the load job
+        job_config = bigquery.LoadJobConfig(
+            source_format=bigquery.SourceFormat.CSV,
+            autodetect=False,  # Automatically detect schema
+            skip_leading_rows=1,  # Skip the header row
+            allow_quoted_newlines=True,  # Allow newlines in quoted fields
+            field_delimiter=",",  # Set the field delimiter
+            write_disposition="WRITE_APPEND",  # Append to the table
+            schema=schema,
+        )
+
+        # Load each file into BigQuery
+        for file in new_files:
+            uri = f"gs://{_GCS_BUCKET_NAME}/{file}"
+            load_job = client.load_table_from_uri(
+                uri,
+                table_ref,
+                job_config=job_config,
+            )
+            load_job.result()  # Wait for the job to complete
+
+            if load_job.errors:
+                raise Exception(f"Errors occurred while loading {file}: {load_job.errors}")
+
+        return f"Loaded {len(new_files)} files into BigQuery."
 
     @task
     def update_processed_files(new_files):
@@ -110,9 +151,10 @@ def gcs_to_bigquery_dag():
     processed_files = get_processed_files()
     all_files = list_gcs_files
     new_files = filter_new_csv_files(processed_files)
+    load_result = load_gcs_to_bq(new_files)
     update_processed_files = update_processed_files(new_files)
 
-    processed_files >> all_files >> new_files >> load_gcs_to_bq >> update_processed_files
+    processed_files >> all_files >> new_files >> load_result >> update_processed_files
 
 
 

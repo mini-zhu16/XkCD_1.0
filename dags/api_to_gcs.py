@@ -5,6 +5,7 @@ from airflow import DAG
 from airflow.models import TaskInstance
 from airflow.decorators import dag, task
 from airflow.providers.google.cloud.operators.gcs import GCSCreateBucketOperator
+from airflow.providers.airflow.operators.dagrun import TriggerDagRunOperator
 from airflow.providers.google.cloud.hooks.gcs import GCSHook
 from datetime import datetime, timedelta
 from include.api_functions import get_comic_data, get_current_comic_number
@@ -25,7 +26,7 @@ default_args = {
 @dag(
     default_args=default_args,
     dag_id="api_to_gcs_ingestion",
-    schedule="@once",
+    schedule="*/5 * * * 1,3,5",
     catchup=False
 )
 def api_to_GCS():
@@ -126,6 +127,15 @@ def api_to_GCS():
         )
         logging.info(f"Uploaded the latest fetched comic number to {last_fetched_comic_file_path}")
 
+    # Trigger the onboarding DAG to load data into BigQuery
+    trigger_second_dag_task = TriggerDagRunOperator(
+    task_id='trigger_downstream_dag',
+    trigger_dag_id='gcs_to_bigquery_dag',  # Second DAG ID
+    conf={}, 
+    wait_for_completion=True,  # Optionally, wait for the triggered DAG to complete
+    gcp_conn_id=_GCP_CONN_ID  # GCP connection ID if needed
+)
+    
     # Task dependencies
     latest_comic_number = get_latest_comic_number()
     last_fetched_comic_number = get_last_fetched_comic_num()
@@ -141,7 +151,7 @@ def api_to_GCS():
     upload_last_fetched = upload_last_fetched_comic_num()
 
     # Define the branching logic
-    next_task >> fetch_comic >> upload_comic >> upload_last_fetched
+    next_task >> fetch_comic >> upload_comic >> upload_last_fetched >> trigger_second_dag_task
     next_task >> upload_last_fetched
 
 api_to_GCS()
