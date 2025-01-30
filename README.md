@@ -13,7 +13,9 @@ Ensure you have the following installed:
 
 ### step 1: 
 Download astro
+
 Download dbt, dbt-bigquery
+
 Download apache-airflow
 
 ### step 2: 
