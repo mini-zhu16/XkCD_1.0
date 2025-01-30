@@ -77,29 +77,15 @@ def gcs_to_bigquery_dag():
         # Define the BigQuery table reference
         table_ref = f"{_PROJECT_ID}.{_BQ_DATASET_NAME}.{_BQ_TABLE_NAME}"
 
-        # Define the table schema
-        schema = [
-            bigquery.SchemaField("num", "INTEGER", mode="REQUIRED"),
-            bigquery.SchemaField("title", "STRING", mode="NULLABLE"),
-            bigquery.SchemaField("safe_title", "STRING", mode="NULLABLE"),
-            bigquery.SchemaField("alt", "STRING", mode="NULLABLE"),
-            bigquery.SchemaField("img", "STRING", mode="NULLABLE"),
-            bigquery.SchemaField("year", "INTEGER", mode="NULLABLE"),
-            bigquery.SchemaField("month", "INTEGER", mode="NULLABLE"),
-            bigquery.SchemaField("day", "INTEGER", mode="NULLABLE"),
-            bigquery.SchemaField("news", "STRING", mode="NULLABLE"),
-            bigquery.SchemaField("link", "STRING", mode="NULLABLE"),
-            bigquery.SchemaField("transcript", "STRING", mode="NULLABLE"),
-        ]
         # Configure the load job
         job_config = bigquery.LoadJobConfig(
             source_format=bigquery.SourceFormat.CSV,
-            autodetect=False,  # Automatically detect schema
+            autodetect=True,  # Automatically detect schema
             skip_leading_rows=1,  # Skip the header row
             allow_quoted_newlines=True,  # Allow newlines in quoted fields
             field_delimiter=",",  # Set the field delimiter
             write_disposition="WRITE_APPEND",  # Append to the table
-            schema=schema,
+            # schema=schema,
         )
 
         # Load each file into BigQuery
@@ -114,6 +100,21 @@ def gcs_to_bigquery_dag():
 
             if load_job.errors:
                 raise Exception(f"Errors occurred while loading {file}: {load_job.errors}")
+            
+            # Update the file metadata columns with the source file information
+            update_query = f"""
+            ALTER TABLE `{table_ref}`
+            ADD COLUMN IF NOT EXISTS source_file_name STRING,
+            ADD COLUMN IF NOT EXISTS source_file_path STRING,
+            ADD COLUMN IF NOT EXISTS created_at TIMESTAMP;
+
+            UPDATE `{table_ref}`
+            SET source_file_name = '{os.path.basename(file)}',
+                source_file_path = '{file}',
+                created_at = CURRENT_TIMESTAMP()
+            WHERE source_file_name IS NULL
+            """
+            client.query(update_query).result()
 
         return f"Loaded {len(new_files)} files into BigQuery."
 
