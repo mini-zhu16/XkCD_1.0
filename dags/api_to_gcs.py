@@ -8,6 +8,7 @@ from airflow.providers.google.cloud.operators.gcs import GCSCreateBucketOperator
 from airflow.operators.trigger_dagrun import TriggerDagRunOperator
 from airflow.providers.google.cloud.hooks.gcs import GCSHook
 from datetime import datetime, timedelta
+from airflow.utils.dates import days_ago
 from include.api_functions import get_comic_data, get_current_comic_number
 
 # GCP variables
@@ -18,7 +19,7 @@ _PROJECT_ID = os.getenv("PROJECT_ID", "xkcd-449310")
 
 default_args = {
     "owner": "Minni",
-    "start_date": datetime(2025, 1, 28),
+    "start_date": days_ago(1),
     "retries": 5,
     "retry_delay": timedelta(minutes=2)
 }
