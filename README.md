@@ -21,7 +21,7 @@ This will start Airflow Scheduler, Webserver and load your DAGs & dbt Project
 ---
 
 ## Star Schema (ERD)
-![Star Schema](dags/dbt/xkcd_dbt/models/xkcd_star_schema.jpg)
+![Star Schema](star_schema.jpg)
 
 ## DAG dependencies
 ![Poject DAG dependencies](dag_dependencies.jpg)
