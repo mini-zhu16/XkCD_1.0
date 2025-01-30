@@ -5,7 +5,7 @@ from airflow import DAG
 from airflow.models import TaskInstance
 from airflow.decorators import dag, task
 from airflow.providers.google.cloud.operators.gcs import GCSCreateBucketOperator
-from airflow.providers.airflow.operators.dagrun import TriggerDagRunOperator
+from airflow.operators.trigger_dagrun import TriggerDagRunOperator
 from airflow.providers.google.cloud.hooks.gcs import GCSHook
 from datetime import datetime, timedelta
 from include.api_functions import get_comic_data, get_current_comic_number
@@ -133,8 +133,7 @@ def api_to_GCS():
     trigger_dag_id='gcs_to_bigquery_dag',  # Second DAG ID
     conf={}, 
     wait_for_completion=True,  # Optionally, wait for the triggered DAG to complete
-    gcp_conn_id=_GCP_CONN_ID  # GCP connection ID if needed
-)
+    )
     
     # Task dependencies
     latest_comic_number = get_latest_comic_number()
