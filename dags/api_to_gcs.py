@@ -130,7 +130,7 @@ def api_to_GCS():
     # Trigger the onboarding DAG to load data into BigQuery
     trigger_second_dag_task = TriggerDagRunOperator(
     task_id='trigger_downstream_dag',
-    trigger_dag_id='gcs_to_bigquery_dag',  # Second DAG ID
+    trigger_dag_id='gcs_to_bigquery_ingestion',  # Second DAG ID
     conf={}, 
     wait_for_completion=True,  # Optionally, wait for the triggered DAG to complete
     )
