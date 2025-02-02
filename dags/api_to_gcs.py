@@ -6,6 +6,7 @@ from airflow.models import TaskInstance
 from airflow.decorators import dag, task
 from airflow.providers.google.cloud.operators.gcs import GCSCreateBucketOperator
 from airflow.operators.trigger_dagrun import TriggerDagRunOperator
+from airflow.operators.dummy_operator import DummyOperator
 from airflow.providers.google.cloud.hooks.gcs import GCSHook
 from datetime import datetime, timedelta
 from airflow.utils.dates import days_ago
@@ -17,6 +18,7 @@ _GCS_BUCKET_NAME = os.getenv("GCS_BUCKET_NAME", "xkcd-raw-data")
 _INGEST_FOLDER_NAME = os.getenv("INGEST_FOLDER_NAME", "xkcd")
 _PROJECT_ID = os.getenv("PROJECT_ID", "xkcd-449310")
 
+# These parameters define the DAG's owner, start time, and retry behavior.
 default_args = {
     "owner": "Minni",
     "start_date": days_ago(1),
@@ -27,10 +29,11 @@ default_args = {
 @dag(
     default_args=default_args,
     dag_id="api_to_gcs_ingestion",
-    schedule="*/5 * * * 1,3,5",
-    catchup=False
+    schedule="*/5 * * * 1,3,5", # DAG execution schedule (Every 5 minutes on Mon, Wed, Fri)
+    catchup=False # Prevents backfilling of missed DAG runs
 )
 def api_to_GCS():
+    """DAG function to fetch new comic data from API and upload it to Google Cloud Storage."""
     # create a bucket to store the raw api data if not exist
     create_bucket_task = GCSCreateBucketOperator(
         task_id="create_bucket",
@@ -57,6 +60,7 @@ def api_to_GCS():
             # Download the last fetched comic number from GCS
             last_fetched_comic_bytes = gcs_hook.download(bucket_name=_GCS_BUCKET_NAME, object_name=last_comic_file_path)
             last_fetched_comic_content = last_fetched_comic_bytes.decode("utf-8")
+            # file content: Last Fetched Comic ID: {num}
             last_fetched_comic_number = int(last_fetched_comic_content.split(":")[1].strip())
             return last_fetched_comic_number
         else:
@@ -74,13 +78,12 @@ def api_to_GCS():
         if new_comic_available:
             return 'fetch_comic_data'
         else:
-            return 'upload_last_fetched_comic_num'
+            return 'stop_workflow'
 
     @task
-    def fetch_comic_data(**context):
+    def fetch_comic_data(ti=None):
         # fetch the available new comic data
-        task_instance = context['task_instance']
-        last_fetched_comic_number = task_instance.xcom_pull(task_ids='get_last_fetched_comic_num')
+        last_fetched_comic_number = ti.xcom_pull(task_ids='get_last_fetched_comic_num')
         comic_df = get_comic_data(start_num=last_fetched_comic_number)
         return comic_df
 
@@ -94,6 +97,7 @@ def api_to_GCS():
         csv_bytes = csv_buffer.getvalue()
 
         # specify the file name and file path
+        # add the current date and time to the file name to make it unique
         date_str = datetime.now().strftime("%Y%m%d_%H%M")
         data_file_name = "comic_data"
         data_file_path = f"{_INGEST_FOLDER_NAME}/{data_file_name}_{date_str}.csv"
@@ -109,11 +113,10 @@ def api_to_GCS():
         logging.info(f"Uploaded comic data to {data_file_path}")
 
     @task
-    def upload_last_fetched_comic_num(**context):
+    def upload_last_fetched_comic_num(ti=None):
         # save the last fetched comic number to a txt file
         # Retrieve the latest comic number from XCom
-        task_instance = context['task_instance']
-        latest_comic_number = task_instance.xcom_pull(task_ids='get_latest_comic_number')
+        latest_comic_number = ti.xcom_pull(task_ids='get_latest_comic_number')
 
         last_fetched_comic_content = f"Last Fetched Comic ID: {latest_comic_number}"
         last_fetched_comic_bytes = last_fetched_comic_content.encode('utf-8')
@@ -133,8 +136,10 @@ def api_to_GCS():
     task_id='trigger_gcs_to_bq_dag',
     trigger_dag_id='gcs_to_bigquery_ingestion',  # Second DAG ID
     conf={}, 
-    wait_for_completion=True,  # Optionally, wait for the triggered DAG to complete
+    wait_for_completion=True,  # wait for the triggered DAG to complete
     )
+
+    stop_workflow = DummyOperator(task_id='stop_workflow')
     
     # Task dependencies
     latest_comic_number = get_latest_comic_number()
@@ -152,6 +157,6 @@ def api_to_GCS():
 
     # Define the branching logic
     next_task >> fetch_comic >> upload_comic >> upload_last_fetched >> trigger_second_dag_task
-    next_task >> upload_last_fetched
+    next_task >> stop_workflow
 
 api_to_GCS()

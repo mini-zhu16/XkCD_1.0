@@ -48,7 +48,7 @@ def gcs_to_bigquery_dag():
             )
             processed_files = processed_files_bytes.decode("utf-8").splitlines()
 
-        return set(processed_files)  # Return a set for faster lookup
+        return processed_files
 
     # Use GCSListObjectsOperator to list files in GCS
     list_gcs_files = GCSListObjectsOperator(
@@ -59,14 +59,16 @@ def gcs_to_bigquery_dag():
     )
 
     @task
-    def filter_new_csv_files(processed_files, ti=None):
+    def filter_new_csv_files(ti=None):
         """Filter out files that have already been processed and that are not csv files."""
+        processed_files = ti.xcom_pull(task_ids="get_processed_files")
         all_files = ti.xcom_pull(task_ids="list_gcs_files")
         return [file for file in all_files if file.endswith(".csv") and file not in processed_files]
 
     @task
-    def load_gcs_to_bq(new_files):
+    def load_gcs_to_bq(ti=None):
         """Load CSV files from GCS into BigQuery using the BigQuery Python Client."""
+        new_files = ti.xcom_pull(task_ids="filter_new_csv_files")
         if not new_files:  # Skip if there are no new files
             return "No new files to load."
 
@@ -85,7 +87,6 @@ def gcs_to_bigquery_dag():
             allow_quoted_newlines=True,  # Allow newlines in quoted fields
             field_delimiter=",",  # Set the field delimiter
             write_disposition="WRITE_APPEND",  # Append to the table
-            # schema=schema,
         )
 
         # Load each file into BigQuery
@@ -119,20 +120,13 @@ def gcs_to_bigquery_dag():
         return f"Loaded {len(new_files)} files into BigQuery."
 
     @task
-    def update_processed_files(new_files):
+    def update_processed_files(ti=None):
         """Update the processed files log in GCS with the newly processed files."""
+        new_files = ti.xcom_pull(task_ids="filter_new_csv_files")
         if new_files:  # Only update if there are new files
+            
             gcs_hook = GCSHook(gcp_conn_id=_GCP_CONN_ID)
-
-            # Download the existing processed files log
-            if gcs_hook.exists(bucket_name=_GCS_BUCKET_NAME, object_name=_PROCESSED_FILES_LOG):
-                processed_files_bytes = gcs_hook.download(
-                    bucket_name=_GCS_BUCKET_NAME,
-                    object_name=_PROCESSED_FILES_LOG,
-                )
-                processed_files = processed_files_bytes.decode("utf-8").splitlines()
-            else:
-                processed_files = []
+            processed_files = ti.xcom_pull(task_ids="get_processed_files")
 
             # Add the newly processed files to the log
             processed_files.extend(new_files)
@@ -153,15 +147,15 @@ def gcs_to_bigquery_dag():
     task_id='trigger_bq_transformation_dag',
     trigger_dag_id='bigquery_transformations',  # Second DAG ID
     conf={}, 
-    wait_for_completion=True,  # Optionally, wait for the triggered DAG to complete
+    wait_for_completion=True,  # wait for the triggered DAG to complete
     )
 
     # Task dependencies
     processed_files = get_processed_files()
     all_files = list_gcs_files
-    new_files = filter_new_csv_files(processed_files)
-    load_result = load_gcs_to_bq(new_files)
-    update_processed_files = update_processed_files(new_files)
+    new_files = filter_new_csv_files()
+    load_result = load_gcs_to_bq()
+    update_processed_files = update_processed_files()
 
     processed_files >> all_files >> new_files >> load_result >> update_processed_files >> trigger_second_dag_task
 

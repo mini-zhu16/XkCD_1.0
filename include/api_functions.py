@@ -28,19 +28,21 @@ def get_comic_data(start_num = 0):
                 response.raise_for_status()
                 comic_data = response.json()
 
-                # only extract certian fields
+                # define the schema
                 filtered_data = {
-                    "num": comic_data.get("num"),
-                    "title": comic_data.get("title"),
-                    "safe_title": comic_data.get("safe_title"),
-                    "alt": comic_data.get("alt"),
-                    "img": comic_data.get("img"),
-                    "year": comic_data.get("year"),
-                    "month": comic_data.get("month"),
-                    "day": comic_data.get("day"),
-                    "news": comic_data.get("news", None),  # Optional field
-                    "link": comic_data.get("link", None),  # Optional field
-                    "transcript": comic_data.get("transcript", None)  # Optional field
+                    "num": comic_data.get("num", None),
+                    "title": comic_data.get("title", None),
+                    "safe_title": comic_data.get("safe_title", None),
+                    "alt": comic_data.get("alt", None),
+                    "img": comic_data.get("img", None),
+                    "year": comic_data.get("year", None),
+                    "month": comic_data.get("month", None),
+                    "day": comic_data.get("day", None),
+                    "news": comic_data.get("news", None),
+                    "link": comic_data.get("link", None),
+                    "transcript": comic_data.get("transcript", None),
+                    "extra_parts": comic_data.get("extra_parts", None)
+
                 }
                 
                 all_comic_data.append(filtered_data)
