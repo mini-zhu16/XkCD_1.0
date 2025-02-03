@@ -23,14 +23,19 @@ profile_config = ProfileConfig(
     ),
 )
 
+# Define the Airflow DAG for running DBT transformations
 my_cosmos_dag = DbtDag(
+    # Project configuration pointing to the location of DBT project files
     project_config=ProjectConfig(
         f"{airflow_home}/dags/dbt/xkcd_dbt",
     ),
+    # Render configuration for DBT, defining test behavior to build DBT tests
     render_config=RenderConfig(
         test_behavior=TestBehavior.BUILD,
     ),
+    # Profile configuration that holds the BigQuery connection setup
     profile_config=profile_config,
+    # Execution configuration for the DAG, specifying the path to the DBT executable
     execution_config=ExecutionConfig(
         dbt_executable_path=f"{airflow_home}/dbt_venv/bin/dbt",
     ),
